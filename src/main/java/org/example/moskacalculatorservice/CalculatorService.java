@@ -18,7 +18,8 @@ public class CalculatorService {
     public BondResponse calculateYield(BondRequest userRequest) {
         log.info("Запрошен расчет для ISIN: {}", userRequest.isin());
 
-        BondRequest moexData = moexDataService.getBondFullData(userRequest.isin());
+        BondRequest moexData = moexDataService.getBondFullData(userRequest.isin(), userRequest.entryRate(), userRequest.targetRate());
+
 
         BigDecimal nominal = (userRequest.nominal() != null) ? userRequest.nominal() : moexData.nominal();
         BigDecimal price = (userRequest.purchasePrice() != null) ? userRequest.purchasePrice() : moexData.purchasePrice();
