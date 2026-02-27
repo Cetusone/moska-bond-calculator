@@ -21,16 +21,16 @@ public class MoexDataService {
                 .build();
     }
 
-    public BondRequest getBondFullData(String isin, BigDecimal entryRate, BigDecimal targetRate) {
+    public BondRequest getBondFullData(String isin) {
         JsonNode root = restClient.get()
                 .uri("/iss/engines/stock/markets/bonds/securities/{isin}.json?iss.meta=off", isin)
                 .retrieve()
                 .body(JsonNode.class);
 
-        return parseMoexResponse(root, isin, entryRate, targetRate);
+        return parseMoexResponse(root, isin);
     }
 
-    private BondRequest parseMoexResponse(JsonNode root, String isin, BigDecimal entryRate, BigDecimal targetRate) {
+    private BondRequest parseMoexResponse(JsonNode root, String isin) {
         JsonNode securities = root.path("securities");
         if (securities.isMissingNode()) {
             throw new RuntimeException("Ответ от MOEX не содержит секции 'securities'");
@@ -38,7 +38,7 @@ public class MoexDataService {
 
         JsonNode columns = securities.path("columns");
         JsonNode data = securities.path("data").get(0);
-
+        log.info("Подключение к моекс");
         if (data == null) throw new RuntimeException("Инструмент не найден на бирже: " + isin);
         return new BondRequest(
                 isin,
@@ -49,8 +49,8 @@ public class MoexDataService {
                 getStringVal(columns, data, "MATDATE"),
                 getBigDecimalVal(columns, data, "PREVPRICE"),
                 getBigDecimalVal(columns, data, "ACCRUEDINT"),
-                entryRate,
-                targetRate
+                null,
+                null
         );
     }
 
