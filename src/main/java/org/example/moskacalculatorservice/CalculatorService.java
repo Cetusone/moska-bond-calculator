@@ -18,7 +18,7 @@ public class CalculatorService {
     private static final MathContext MC = MathContext.DECIMAL64;
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final BigDecimal DAYS_IN_YEAR = new BigDecimal("365");
-
+    private static final BigDecimal TAX_RATE = new BigDecimal("0.13"); // НДФЛ 13%
 
     public CalculatorService(MoexDataService moexDataService) {
         this.moexDataService = moexDataService;
@@ -29,77 +29,78 @@ public class CalculatorService {
 
         BondRequest moexData = moexDataService.getBondFullData(userRequest.isin());
 
+        BigDecimal nominal = getOrDefault(userRequest.nominal(), moexData.nominal());
+        BigDecimal purchasePrice = getOrDefault(userRequest.purchasePrice(), moexData.purchasePrice());
+        BigDecimal couponAmount = getOrDefault(userRequest.couponAmount(), moexData.couponAmount());
+        Integer couponPeriodInt = getOrDefault(userRequest.couponPeriod(), moexData.couponPeriod());
+        LocalDate maturityDate = LocalDate.parse(getOrDefault(userRequest.maturityDate(), moexData.maturityDate()));
+        BigDecimal nkd = getOrDefault(userRequest.nkd(), moexData.nkd());
 
-        BigDecimal nominal = (userRequest.nominal() != null) ? userRequest.nominal() : moexData.nominal();
-        BigDecimal purchasePrice = (userRequest.purchasePrice() != null) ? userRequest.purchasePrice() : moexData.purchasePrice();
-        BigDecimal couponAmount = (userRequest.couponAmount() != null) ? userRequest.couponAmount() : moexData.couponAmount();
-        Integer couponPeriodInt = (userRequest.couponPeriod() != null) ? userRequest.couponPeriod() : moexData.couponPeriod();
-        LocalDate maturityDate = LocalDate.parse(userRequest.maturityDate() != null ? userRequest.maturityDate() : moexData.maturityDate());
-        BigDecimal nkd = (userRequest.nkd() != null) ? userRequest.nkd() : moexData.nkd();
         BigDecimal entryRate = userRequest.entryRate();
         BigDecimal targetRate = userRequest.targetRate();
         LocalDate purchaseDate = LocalDate.now();
 
         long daysToMaturityLong = ChronoUnit.DAYS.between(purchaseDate, maturityDate);
-
         if (daysToMaturityLong <= 0) {
             throw new IllegalArgumentException("Дата погашения должна быть позже даты покупки");
         }
         BigDecimal daysToMaturity = BigDecimal.valueOf(daysToMaturityLong);
+        BigDecimal annualizedMultiplier = DAYS_IN_YEAR.divide(daysToMaturity, MC);
 
-
-        //корявые расчеты ии, которые надо будет переписать
-
-        // 2. Грязная цена в валюте: Nominal * (purchasePrice / 100) + NKD
         BigDecimal priceRatio = purchasePrice.divide(HUNDRED, MC);
-        BigDecimal cleanPriceCurr = nominal.multiply(priceRatio, MC);
-        BigDecimal dirtyPriceCurr = cleanPriceCurr.add(nkd, MC);
+        BigDecimal dirtyPriceCurr = nominal.multiply(priceRatio, MC).add(nkd, MC);
 
-        // 3. Инвестировано рублей: DirtyPriceCurr * entryRate
         BigDecimal investedRub = dirtyPriceCurr.multiply(entryRate, MC);
 
-        // 4. Считаем оставшиеся купоны.
-        // Используем точное дробное количество периодов для простой доходности
         BigDecimal couponPeriod = BigDecimal.valueOf(couponPeriodInt);
-        BigDecimal totalPeriodsLeft = daysToMaturity.divide(couponPeriod, MC);
+        BigDecimal couponsLeft = daysToMaturity.divide(couponPeriod, 0, RoundingMode.CEILING);
 
-        // Сумма всех будущих купонов в валюте
-        BigDecimal sumCouponsCurr = couponAmount.multiply(totalPeriodsLeft, MC);
+        BigDecimal sumCouponsCurr = couponAmount.multiply(couponsLeft, MC);
 
-        // 5. Итоговая выплата в рублях по целевому курсу: (Номинал + Все купоны) * targetRate
-        BigDecimal totalReturnCurr = nominal.add(sumCouponsCurr, MC);
-        BigDecimal totalReturnRub = totalReturnCurr.multiply(targetRate, MC);
+        BigDecimal totalPayoutCurr = nominal.add(sumCouponsCurr, MC);
 
-        // 6. Считаем YTM по формуле: ((TotalReturnRub / InvestedRub) - 1) * (365 / DaysToMaturity) * 100
-        BigDecimal roi = totalReturnRub.divide(investedRub, MC).subtract(BigDecimal.ONE, MC); // Return On Investment (абсолютный прирост)
-        BigDecimal annualizedMultiplier = DAYS_IN_YEAR.divide(daysToMaturity, MC); // Годовой множитель
+        BigDecimal totalPayoutRub = totalPayoutCurr.multiply(targetRate, MC);
 
-        BigDecimal ytmRub = roi.multiply(annualizedMultiplier, MC).multiply(HUNDRED, MC);
+        BigDecimal grossProfitRub = totalPayoutRub.subtract(investedRub, MC);
+        BigDecimal taxRub = BigDecimal.ZERO;
 
-        // Округляем финальный результат до 2 знаков после запятой
-        // Годовой купон в валюте (сколько долларов/евро получим за год)
-        BigDecimal couponsPerYear = DAYS_IN_YEAR.divide(couponPeriod, MC);
-        BigDecimal annualCouponCurr = couponAmount.multiply(couponsPerYear, MC);
+        //налог
+        if (grossProfitRub.compareTo(BigDecimal.ZERO) > 0) {
+            taxRub = grossProfitRub.multiply(TAX_RATE, MC);
+        }
 
-        // А) Купонная доходность (от номинала)
-        BigDecimal couponYield = annualCouponCurr.divide(nominal, MC).multiply(HUNDRED, MC);
+        BigDecimal netPayoutRub = totalPayoutRub.subtract(taxRub, MC);
+        BigDecimal netProfitRub = netPayoutRub.subtract(investedRub, MC);
 
-        // Б) Текущая доходность (от цены покупки)
-        BigDecimal currentYield = annualCouponCurr.divide(dirtyPriceCurr, MC).multiply(HUNDRED, MC);
 
-        // В) Доходность при девальвации за 1 год (прогнозная доходность, если держать бумагу 1 год)
-        // Формула: ((Цена_в_валюте + Купоны_за_год) * Курс_прогноз / Инвестировано_руб - 1) * 100
-        BigDecimal valueAfterOneYearRub = dirtyPriceCurr.add(annualCouponCurr, MC).multiply(targetRate, MC);
-        BigDecimal simpleYearlyYieldRub = valueAfterOneYearRub.divide(investedRub, MC).subtract(BigDecimal.ONE, MC).multiply(HUNDRED, MC);
+        //в валюте
+        BigDecimal roiCurr = totalPayoutCurr.divide(dirtyPriceCurr, MC).subtract(BigDecimal.ONE, MC);
+        BigDecimal yieldInCurrency = roiCurr.multiply(annualizedMultiplier, MC).multiply(HUNDRED, MC);
 
+        //без налога
+        BigDecimal roiRubGross = grossProfitRub.divide(investedRub, MC);
+        BigDecimal grossYieldInRub = roiRubGross.multiply(annualizedMultiplier, MC).multiply(HUNDRED, MC);
+
+
+        BigDecimal roiRubNet = netProfitRub.divide(investedRub, MC);
+        BigDecimal netYieldInRub = roiRubNet.multiply(annualizedMultiplier, MC).multiply(HUNDRED, MC);
+
+        BigDecimal currencyEffectPercent = targetRate.divide(entryRate, MC)
+                .subtract(BigDecimal.ONE, MC)
+                .multiply(annualizedMultiplier, MC)
+                .multiply(HUNDRED, MC);
 
         return new BondResponse(
                 userRequest.isin(),
-                couponYield,
-                currentYield,
-                simpleYearlyYieldRub,
-                ytmRub
-
+                yieldInCurrency.setScale(2, RoundingMode.HALF_UP),
+                grossYieldInRub.setScale(2, RoundingMode.HALF_UP),
+                netYieldInRub.setScale(2, RoundingMode.HALF_UP),
+                netProfitRub.setScale(2, RoundingMode.HALF_UP),
+                currencyEffectPercent.setScale(2, RoundingMode.HALF_UP)
         );
+    }
+
+    private <T> T getOrDefault(T value, T defaultValue) {
+        return value != null ? value : defaultValue;
     }
 }

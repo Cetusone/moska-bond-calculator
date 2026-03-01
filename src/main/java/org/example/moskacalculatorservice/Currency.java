@@ -8,8 +8,7 @@ public enum Currency {
 
     public static Currency getCurrency(String currency) {
 
-        if (currency == null) return null; // Защита от NPE
-
+        if (currency == null) return null;
         return switch (currency.toUpperCase().trim()) {
             case "EUR" -> EUR;
             case "USD" -> USD;
