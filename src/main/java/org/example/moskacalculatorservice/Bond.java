@@ -1,20 +1,21 @@
 package org.example.moskacalculatorservice;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
-public record BondRequest (
+public record Bond(
         String isin,
         Currency currency,
         BigDecimal nominal,
         BigDecimal couponAmount,
         Integer couponPeriod,
-        String maturityDate,
+        LocalDate maturityDate,
         BigDecimal purchasePrice,
         BigDecimal nkd,
 
         BigDecimal entryRate,
-        BigDecimal targetRate
+        BigDecimal targetRate,
+        LocalDate purchaseDate
 
-
-)
-{}
+) {
+}
