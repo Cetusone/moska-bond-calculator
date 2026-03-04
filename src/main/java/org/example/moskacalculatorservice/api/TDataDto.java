@@ -1,11 +1,11 @@
-package org.example.moskacalculatorservice;
+package org.example.moskacalculatorservice.api;
+
+import org.example.moskacalculatorservice.Currency;
 
 import java.math.BigDecimal;
 
-
-public record BondRequestDto(
+public record TDataDto(
         String isin,
-        String figi,
         Currency currency,
         BigDecimal nominal,
         BigDecimal couponAmount,
@@ -16,7 +16,5 @@ public record BondRequestDto(
 
         BigDecimal entryRate,
         BigDecimal targetRate
-
-
-)
-{}
+) {
+}
