@@ -2,7 +2,7 @@ package org.example.moskacalculatorservice;
 
 import java.math.BigDecimal;
 
-public record BondResponse(
+public record YieldCalculation(
         String isin,
         BigDecimal yieldInCurrency,     //эффективность бумаги
         BigDecimal grossYieldInRub,     //общий доход в рублях

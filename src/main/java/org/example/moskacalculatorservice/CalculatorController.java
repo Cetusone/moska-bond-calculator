@@ -20,9 +20,9 @@ public class CalculatorController {
     }
 
     @PostMapping
-    public ResponseEntity<BondResponse> calculate(@RequestBody BondRequest bondRequest) {
+    public ResponseEntity<BondResponse> calculate(@RequestBody BondRequestDto bondRequestDto) {
         log.info("Получен HTTP запрос на расчет");
-        BondResponse response = calculatorService.calculateYield(bondRequest);
+        BondResponse response = calculatorService.calculateYield(bondRequestDto);
         return ResponseEntity.ok(response);
     }
 }

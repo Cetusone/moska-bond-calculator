@@ -31,6 +31,11 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>ru.tinkoff.piapi</groupId>
+            <artifactId>java-sdk-spring-boot-starter</artifactId>
+            <version>1.31</version>
+        </dependency>
     </dependencies>
     <dependencyManagement>
         <dependencies>
